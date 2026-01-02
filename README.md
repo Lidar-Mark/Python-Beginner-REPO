@@ -1,1 +1,1 @@
-A collection of Python beginner projects and exercises to practice basic programming concepts such as variables, loops, conditionals, functions, and data structures.
+A collection of Python beginner projects and exercises to practice basic programming concepts such as variables, loops, conditionals, functions, and data structures. Ideal for learning and experimenting with Python.
