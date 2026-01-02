@@ -1,3 +1,10 @@
+"""
+A simple Python console game where the player guesses a randomly generated number
+within a limited number of attempts. Different difficulty levels adjust the number
+range and allowed guesses. The game tracks wins and losses, demonstrating Python
+concepts such as functions, loops, conditionals, dictionaries, and user input.
+"""
+
 from random import randint
 
 BOX_WIDTH = 40
