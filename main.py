@@ -6,23 +6,36 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
-
 # ── Paths & Setup ────────────────────────────────────────────────────────────
 
 # Current script directory (base for relative paths)
 CURR = Path(__file__).absolute().parent
-logging.info(f"Current Directory: '{CURR}'.")
 
 # Create base application directory if missing
 BASE_DIR = CURR / "data"
 BASE_DIR.mkdir(parents=True, exist_ok=True)
-logging.info(f"Base Directory: '{BASE_DIR}'.")
 
 # Path to users JSON file and users folder
 USERS_FILE = BASE_DIR / "Users.json"
 USERS_DIR = BASE_DIR / "Users"
 USERS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Log file path
+LOG_FILE = BASE_DIR / "app.log"
+
+# Setup logging to both console and file
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="UTF-8"),  # writes to app.log
+        logging.StreamHandler()                            # writes to console
+    ]
+)
+
+logging.info(f"Current Directory: '{CURR}'.")
+logging.info(f"Base Directory: '{BASE_DIR}'.")
 
 try:
     # Create empty users file if missing or empty
@@ -39,7 +52,7 @@ except json.JSONDecodeError:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = USERS_FILE.with_stem(f"Users_backup_{timestamp}")
     USERS_FILE.rename(backup)
-    logging.info(f"Created Backup File: '{backup.name}'.")
+    logging.warning(f"Corrupted file detected. Created Backup: '{backup.name}'.")
 
     # Reset users file and initialize empty list
     USERS_FILE.write_text("[]", encoding="UTF-8")
@@ -146,11 +159,13 @@ def create_task(user_name: str):
 
     title = input("Enter Title: ").strip()
     if not title:
+        logging.warning(f"User '{user_name}' tried to create a task with empty title.")
         print("Title cannot be empty.")
         return
 
     description = input("Enter Description: ").strip()
     if not description:
+        logging.warning(f"User '{user_name}' tried to create a task with empty description.")
         print("Description cannot be empty.")
         return
 
@@ -162,6 +177,7 @@ def create_task(user_name: str):
         status_input = int(input("Enter status number: "))
         selected_status = TaskStatus(status_input).name
     except ValueError:
+        logging.warning(f"User '{user_name}' entered invalid status. Defaulting to New.")
         print("Invalid status, defaulting to New.")
         selected_status = TaskStatus.New.name
 
@@ -174,11 +190,13 @@ def create_task(user_name: str):
 
     tasks.append(asdict(new_task))
     save_tasks(user_name, tasks)
+    logging.info(f"User '{user_name}' created task [{new_task.id}] '{new_task.title}' with status '{new_task.status}'.")
     print(f"Task '{new_task.title}' created successfully.")
 
 
 def list_tasks(user_name: str):
     tasks = load_tasks(user_name)
+    logging.info(f"User '{user_name}' listed tasks. Total: {len(tasks)}.")
     if not tasks:
         print("No tasks found.")
         return
@@ -196,11 +214,13 @@ def modify_task(user_name: str):
     try:
         task_id = int(input("Enter Task ID to modify: "))
     except ValueError:
+        logging.warning(f"User '{user_name}' entered invalid task ID.")
         print("Invalid ID, please enter a number.")
         return
 
     task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
+        logging.warning(f"User '{user_name}' tried to modify non-existent task ID {task_id}.")
         print("Task not found.")
         return
 
@@ -216,21 +236,27 @@ def modify_task(user_name: str):
             print("Title cannot be empty.")
             return
         task["title"] = title
+        logging.info(f"User '{user_name}' updated title of task [{task_id}] to '{title}'.")
     elif choice == "2":
         description = input("Enter new Description: ").strip()
         if not description:
             print("Description cannot be empty.")
             return
         task["description"] = description
+        logging.info(f"User '{user_name}' updated description of task [{task_id}].")
     elif choice == "3":
         for s in TaskStatus:
             print(f"{s.value} - {s.name}")
         try:
-            task["status"] = TaskStatus(int(input("Enter status number: "))).name
+            new_status = TaskStatus(int(input("Enter status number: "))).name
+            task["status"] = new_status
+            logging.info(f"User '{user_name}' updated status of task [{task_id}] to '{new_status}'.")
         except ValueError:
+            logging.warning(f"User '{user_name}' entered invalid status for task [{task_id}].")
             print("Invalid status.")
             return
     else:
+        logging.warning(f"User '{user_name}' entered invalid modify choice '{choice}'.")
         print("Invalid choice.")
         return
 
@@ -244,16 +270,19 @@ def delete_task(user_name: str):
     try:
         task_id = int(input("Enter Task ID to delete: "))
     except ValueError:
+        logging.warning(f"User '{user_name}' entered invalid task ID for deletion.")
         print("Invalid ID, please enter a number.")
         return
 
     task = next((t for t in tasks if t["id"] == task_id), None)
     if not task:
+        logging.warning(f"User '{user_name}' tried to delete non-existent task ID {task_id}.")
         print("Task not found.")
         return
 
     tasks = [t for t in tasks if t["id"] != task_id]
     save_tasks(user_name, tasks)
+    logging.info(f"User '{user_name}' deleted task [{task_id}] '{task['title']}'.")
     print(f"Task '{task['title']}' deleted successfully.")
 
 
@@ -271,6 +300,7 @@ def create_user():
 
     # Check username already exists
     if any(u["user_name"] == user_name for u in users):
+        logging.warning(f"Registration failed — username '{user_name}' already taken.")
         print("Username already taken.")
         return
 
@@ -282,7 +312,7 @@ def create_user():
 
     users.append(asdict(data))
     USERS_FILE.write_text(json.dumps(users, indent=4), encoding="UTF-8")
-    logging.info(f"User '{data.user_name}' created successfully.")
+    logging.info(f"New user registered: '{data.user_name}' with ID {data.id}.")
 
     # Create user folder and empty Tasks.json
     user_path = USERS_DIR / data.user_name
@@ -296,6 +326,7 @@ def login_user():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
 
     if Validator.is_logged_in(users):
+        logging.warning("Login attempt blocked — a user is already logged in.")
         print("There is a user already logged in.")
         return False
 
@@ -305,11 +336,13 @@ def login_user():
     user = next((u for u in users if u["user_name"] == user_data and u["password"] == pass_data), None)
 
     if not user:
+        logging.warning(f"Failed login attempt for username '{user_data}'.")
         print("Invalid username or password.")
         return False
 
     user["logged_in"] = True
     USERS_FILE.write_text(json.dumps(users, indent=2), encoding="UTF-8")
+    logging.info(f"User '{user['user_name']}' logged in.")
     print(f"Welcome back, {user['user_name']}!")
     return True
 
@@ -318,12 +351,14 @@ def logout_user():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
 
     if not Validator.is_logged_in(users):
+        logging.warning("Logout attempt — no user is logged in.")
         print("No user is logged in.")
         return False
 
     user = get_logged_in_user(users)
     user["logged_in"] = False
     USERS_FILE.write_text(json.dumps(users, indent=2), encoding="UTF-8")
+    logging.info(f"User '{user['user_name']}' logged out.")
     print(f"Goodbye, {user['user_name']}!")
     return True
 
@@ -332,6 +367,7 @@ def modify_user():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
 
     if not Validator.is_logged_in(users):
+        logging.warning("Modify user attempt — no user is logged in.")
         print("User must be logged in.")
         return
 
@@ -339,11 +375,13 @@ def modify_user():
     user = next((u for u in users if u["logged_in"] and u["password"] == user_password), None)
 
     if not user:
+        logging.warning(f"Password modify failed — incorrect password for logged in user.")
         print("Incorrect password.")
         return
 
     user["password"] = Validator.password("Enter a new Password: ")
     USERS_FILE.write_text(json.dumps(users, indent=2), encoding="UTF-8")
+    logging.info(f"User '{user['user_name']}' changed their password.")
     print("Password updated successfully.")
 
 
@@ -351,6 +389,7 @@ def delete_user():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
 
     if not Validator.is_logged_in(users):
+        logging.warning("Delete user attempt — no user is logged in.")
         print("User must be logged in.")
         return
 
@@ -358,16 +397,19 @@ def delete_user():
     user = next((u for u in users if u["logged_in"] and u["password"] == user_password), None)
 
     if not user:
+        logging.warning("Delete user failed — incorrect password confirmation.")
         print("Incorrect password.")
         return
 
     users = [u for u in users if u != user]
     USERS_FILE.write_text(json.dumps(users, indent=2), encoding="UTF-8")
+    logging.info(f"User '{user['user_name']}' (ID {user['id']}) deleted their account.")
     print(f"User '{user['user_name']}' deleted successfully.")
 
 
 def list_users():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
+    logging.info(f"Listed all users. Total: {len(users)}.")
     if not users:
         print("No users found.")
         return
@@ -383,6 +425,7 @@ def list_users():
 def user_create_task():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
     if not Validator.is_logged_in(users):
+        logging.warning("Create task attempt — no user is logged in.")
         print("User must be logged in.")
         return
     user = get_logged_in_user(users)
@@ -392,6 +435,7 @@ def user_create_task():
 def user_list_tasks():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
     if not Validator.is_logged_in(users):
+        logging.warning("List tasks attempt — no user is logged in.")
         print("User must be logged in.")
         return
     user = get_logged_in_user(users)
@@ -401,6 +445,7 @@ def user_list_tasks():
 def user_modify_task():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
     if not Validator.is_logged_in(users):
+        logging.warning("Modify task attempt — no user is logged in.")
         print("User must be logged in.")
         return
     user = get_logged_in_user(users)
@@ -410,6 +455,7 @@ def user_modify_task():
 def user_delete_task():
     users = json.loads(USERS_FILE.read_text(encoding="UTF-8"))
     if not Validator.is_logged_in(users):
+        logging.warning("Delete task attempt — no user is logged in.")
         print("User must be logged in.")
         return
     user = get_logged_in_user(users)
@@ -453,16 +499,20 @@ def main():
         "10": user_delete_task,
     }
 
+    logging.info("App started.")
+
     while True:
         print_menu()
         choice = input("Enter choice: ").strip()
 
         if choice == "0":
+            logging.info("App exited by user.")
             print("Goodbye!")
             break
         elif choice in options:
             options[choice]()
         else:
+            logging.warning(f"Invalid menu choice entered: '{choice}'.")
             print("Invalid choice, please try again.")
 
 
